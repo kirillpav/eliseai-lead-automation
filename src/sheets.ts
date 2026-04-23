@@ -1,10 +1,37 @@
-import { ALL_HEADERS, INPUT_HEADERS, OUTPUT_HEADERS, STATUS } from "./constants.js";
+import { ALL_HEADERS, INPUT_HEADERS, LEAD_TIER_STYLES, OUTPUT_HEADERS, STATUS } from "./constants.js";
 import { getConfig } from "./config.js";
-import type { HeaderMap, LeadInput, LeadStatus, SheetRowOutput } from "./types.js";
+import type { HeaderMap, LeadInput, LeadStatus, LeadTier, SheetRowOutput } from "./types.js";
 import { cleanText, nowIsoString } from "./utils.js";
 
 function toHeaderMap(headers: string[]): HeaderMap {
   return Object.fromEntries(ALL_HEADERS.map((header) => [header, headers.indexOf(header)])) as HeaderMap;
+}
+
+function styleLeadTierCells(
+  sheet: GoogleAppsScript.Spreadsheet.Sheet,
+  rowNumber: number,
+  headerMap: HeaderMap,
+  tier: LeadTier
+): void {
+  const tierStyle = LEAD_TIER_STYLES[tier];
+  const tierColumn = headerMap["Lead Tier"] + 1;
+  const scoreColumn = headerMap["Lead Score"] + 1;
+
+  if (tierColumn > 0) {
+    sheet
+      .getRange(rowNumber, tierColumn)
+      .setBackground(tierStyle.background)
+      .setFontColor(tierStyle.fontColor)
+      .setFontWeight("bold");
+  }
+
+  if (scoreColumn > 0) {
+    sheet
+      .getRange(rowNumber, scoreColumn)
+      .setBackground(tierStyle.background)
+      .setFontColor(tierStyle.fontColor)
+      .setFontWeight("bold");
+  }
 }
 
 export function getLeadSheet(): GoogleAppsScript.Spreadsheet.Sheet {
@@ -100,6 +127,10 @@ export function writeRowOutput(
   }
 
   sheet.getRange(rowNumber, 1, 1, rowValues.length).setValues([rowValues]);
+
+  if (output["Lead Tier"]) {
+    styleLeadTierCells(sheet, rowNumber, headerMap, output["Lead Tier"]);
+  }
 }
 
 export function setRowStatus(

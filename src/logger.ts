@@ -1,10 +1,11 @@
 export interface LeadLogger {
+  readonly context: LoggerContext;
   info(event: string, data?: unknown): void;
   warn(event: string, data?: unknown): void;
   error(event: string, data?: unknown): void;
 }
 
-interface LoggerContext {
+export interface LoggerContext {
   runId: string;
   rowNumber?: number;
 }
@@ -57,6 +58,7 @@ function emit(level: "INFO" | "WARN" | "ERROR", context: LoggerContext, event: s
 
 export function createLeadLogger(context: LoggerContext): LeadLogger {
   return {
+    context,
     info(event, data) {
       emit("INFO", context, event, data);
     },

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { scoreLead } from "../src/scoring.js";
+import { buildActionabilityOutputs } from "../src/rep-output.js";
+import { deriveLeadTier, scoreLead } from "../src/scoring.js";
 import type { LeadAssessment } from "../src/types.js";
 
 function makeAssessment(overrides: Partial<LeadAssessment> = {}): LeadAssessment {
@@ -73,6 +74,7 @@ test("scoreLead rewards strong multifamily and validated data signals", () => {
 
   assert.equal(scored.recommendedStatus, "ENRICHED");
   assert.equal(scored.score, 90);
+  assert.equal(scored.tier, "HOT");
   assert.match(scored.fitLabel, /Strong multifamily/);
   assert.ok(scored.positiveSignals.some((signal) => signal.includes("multifamily")));
   assert.ok(scored.positiveSignals.some((signal) => signal.includes("exceptional signal quality")));
@@ -142,7 +144,57 @@ test("scoreLead treats broad real estate services firms as conditional fit", () 
     "Possible fit only if the contact supports residential leasing or resident-facing property operations"
   );
   assert.ok(scored.score < 60);
+  assert.equal(scored.tier, "REVIEW");
   assert.match(scored.scoreReason, /company domain and property address were validated/i);
-  assert.match(scored.scoreReason, /broad real estate services firm/i);
+  assert.match(scored.scoreReason, /commercial-real-estate-oriented/i);
+  assert.match(scored.scoreReason, /multifamily or residential/i);
   assert.ok(scored.negativeSignals.some((signal) => signal.includes("broad real estate services firm")));
+});
+
+test("deriveLeadTier maps score bands for SDR prioritization", () => {
+  assert.equal(deriveLeadTier(92), "HOT");
+  assert.equal(deriveLeadTier(80), "HOT");
+  assert.equal(deriveLeadTier(79), "WARM");
+  assert.equal(deriveLeadTier(55), "WARM");
+  assert.equal(deriveLeadTier(54), "REVIEW");
+  assert.equal(deriveLeadTier(25), "REVIEW");
+  assert.equal(deriveLeadTier(24), "COLD");
+  assert.equal(deriveLeadTier(0), "COLD");
+});
+
+test("buildActionabilityOutputs highlights why a strong-fit lead should be prioritized", () => {
+  const assessment = makeAssessment();
+  const scored = scoreLead(assessment);
+  const actionability = buildActionabilityOutputs(assessment, scored);
+
+  assert.match(actionability.whyPrioritize, /strong multifamily\/property-operations fit/i);
+  assert.match(actionability.whyPrioritize, /validated company identity/i);
+  assert.equal(actionability.whatsMissing, "No major gaps; ready for outreach.");
+});
+
+test("buildActionabilityOutputs makes review gaps explicit for conditional-fit leads", () => {
+  const assessment = makeAssessment({
+    normalized: {
+      ...makeAssessment().normalized,
+      name: "Michael Lee",
+      email: "michael.lee@cushwake.com",
+      emailLower: "michael.lee@cushwake.com",
+      emailDomain: "cushwake.com",
+      company: "Cushman & Wakefield"
+    },
+    company: {
+      ...makeAssessment().company,
+      legalName: "Cushman & Wakefield",
+      canonicalDomain: "cushwake.com",
+      website: "https://www.cushmanwakefield.com",
+      description: "Global commercial real estate services firm providing brokerage, facilities management, valuations, and capital markets advisory.",
+      industries: ["Commercial Real Estate", "Real Estate Services"],
+      businessType: "Commercial real estate services"
+    }
+  });
+  const scored = scoreLead(assessment);
+  const actionability = buildActionabilityOutputs(assessment, scored);
+
+  assert.match(actionability.whyPrioritize, /possible fit only if/i);
+  assert.match(actionability.whatsMissing, /confirmation that the contact owns residential leasing or resident operations/i);
 });

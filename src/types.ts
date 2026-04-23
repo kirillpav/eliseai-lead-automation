@@ -1,13 +1,16 @@
-import type { ALL_HEADERS, STATUS } from "./constants.js";
+import type { ALL_HEADERS, LEAD_TIERS, STATUS } from "./constants.js";
 
 export type HeaderName = (typeof ALL_HEADERS)[number];
 export type LeadStatus = (typeof STATUS)[keyof typeof STATUS];
+export type LeadTier = (typeof LEAD_TIERS)[keyof typeof LEAD_TIERS];
 
 export interface AppConfig {
   openAiApiKey: string;
   openAiModel: string;
   theCompaniesApiKey: string;
   censusApiKey: string;
+  analyticsBaseUrl: string;
+  analyticsIngestToken: string;
   leadsSheetName: string;
   sweepIntervalMinutes: number;
 }
@@ -92,6 +95,7 @@ export interface ScoreSignal {
 
 export interface ScoredLead {
   score: number;
+  tier: LeadTier;
   recommendedStatus: LeadStatus;
   fitLabel: string;
   scoreReason: string;
@@ -120,8 +124,11 @@ export interface SheetRowOutput {
   "Enriched Company Info": string;
   "Address / Property Validation": string;
   "Lead Score": number;
+  "Lead Tier": LeadTier;
   "Lead Score Reason": string;
   "Sales Insights": string;
+  "Why Prioritize": string;
+  "What's Missing": string;
   "Draft Outreach Email": string;
   Status: LeadStatus;
   "Last Processed At": string;

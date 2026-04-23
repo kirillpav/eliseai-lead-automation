@@ -1,8 +1,10 @@
 import { STATUS } from "./constants.js";
+import { buildLeadPreviewPayload, sendLeadPreview } from "./analytics.js";
 import { generateRepOutputs } from "./llm.js";
 import { createLeadLogger } from "./logger.js";
 import { normalizeLead } from "./normalization.js";
 import { buildAssessment } from "./providers.js";
+import { buildActionabilityOutputs } from "./rep-output.js";
 import { scoreLead } from "./scoring.js";
 import {
   ensureLeadSheet,
@@ -10,10 +12,9 @@ import {
   getLeadSheet,
   initializeRowStatusIfBlank,
   readLeadInput,
-  setRowStatus,
   writeRowOutput
 } from "./sheets.js";
-import type { LeadStatus, SheetRowOutput } from "./types.js";
+import type { LeadAssessment, LeadInput, LeadStatus, NormalizedLead, RepOutputs, ScoredLead, SheetRowOutput } from "./types.js";
 import { nowIsoString } from "./utils.js";
 
 function buildSheetRowOutput(
@@ -23,6 +24,7 @@ function buildSheetRowOutput(
 ): SheetRowOutput {
   const companyDomain = assessment.company.canonicalDomain;
   const companyWebsite = assessment.company.website || (companyDomain ? `https://${companyDomain}` : "");
+  const actionability = buildActionabilityOutputs(assessment, score);
   const addressSummary = formatAddressValidationSummary(
     assessment.address.formattedAddress,
     assessment.address.isValid,
@@ -43,8 +45,11 @@ function buildSheetRowOutput(
     "Enriched Company Info": repOutputs.enrichedCompanyInfo,
     "Address / Property Validation": addressSummary,
     "Lead Score": score.score,
+    "Lead Tier": score.tier,
     "Lead Score Reason": score.scoreReason,
     "Sales Insights": repOutputs.salesInsights,
+    "Why Prioritize": actionability.whyPrioritize,
+    "What's Missing": actionability.whatsMissing,
     "Draft Outreach Email": repOutputs.draftOutreachEmail,
     Status: status,
     "Last Processed At": nowIsoString()
@@ -58,12 +63,25 @@ export function processLeadRow(rowNumber: number): void {
   });
   const lock = LockService.getDocumentLock();
   lock.waitLock(30_000);
+  let input: LeadInput = {
+    name: "",
+    email: "",
+    company: "",
+    propertyAddress: "",
+    city: "",
+    state: "",
+    country: ""
+  };
+  let normalized: NormalizedLead | null = null;
+  let assessment: LeadAssessment | null = null;
+  let scoredLead: ScoredLead | null = null;
+  let repOutputs: RepOutputs | null = null;
 
   try {
     logger.info("lead.process.start");
     const sheet = getLeadSheet();
     const headerMap = ensureLeadSheet();
-    const input = readLeadInput(sheet, rowNumber, headerMap);
+    input = readLeadInput(sheet, rowNumber, headerMap);
     const currentStatus = initializeRowStatusIfBlank(sheet, rowNumber, headerMap, input);
     logger.info("lead.process.row-loaded", {
       input,
@@ -78,16 +96,16 @@ export function processLeadRow(rowNumber: number): void {
       return;
     }
 
-    setRowStatus(sheet, rowNumber, headerMap, STATUS.PENDING);
-    logger.info("lead.process.status-updated", {
-      status: STATUS.PENDING
+    logger.info("lead.process.status-pending", {
+      status: STATUS.PENDING,
+      mode: "internal-only"
     });
 
-    const normalized = normalizeLead(input);
+    normalized = normalizeLead(input);
     logger.info("lead.process.normalized", normalized);
-    const assessment = buildAssessment(normalized, logger);
-    const scoredLead = scoreLead(assessment, logger);
-    const repOutputs = generateRepOutputs(assessment, scoredLead, logger);
+    assessment = buildAssessment(normalized, logger);
+    scoredLead = scoreLead(assessment, logger);
+    repOutputs = generateRepOutputs(assessment, scoredLead, logger);
     const rowOutput = buildSheetRowOutput(assessment, scoredLead, repOutputs);
     logger.info("lead.process.output-prepared", {
       rowOutput,
@@ -95,9 +113,24 @@ export function processLeadRow(rowNumber: number): void {
     });
 
     writeRowOutput(sheet, rowNumber, headerMap, rowOutput);
+    sendLeadPreview(
+      buildLeadPreviewPayload({
+        runId: logger.context.runId,
+        leadRowNumber: rowNumber,
+        processingStatus: rowOutput.Status,
+        input,
+        normalized,
+        assessment,
+        scoredLead,
+        repOutputs,
+        rowOutput
+      }),
+      logger
+    );
     logger.info("lead.process.completed", {
       finalStatus: rowOutput.Status,
-      score: rowOutput["Lead Score"]
+      score: rowOutput["Lead Score"],
+      tier: rowOutput["Lead Tier"]
     });
   } catch (error) {
     const sheet = getLeadSheet();
@@ -108,11 +141,39 @@ export function processLeadRow(rowNumber: number): void {
     });
 
     writeRowOutput(sheet, rowNumber, headerMap, {
+      "Lead Score": 0,
+      "Lead Tier": "COLD",
       "Lead Score Reason": `Processing failed: ${message}`,
       "Address / Property Validation": "Processing failed before address validation completed.",
+      "Why Prioritize": "Do not prioritize until the row processes successfully.",
+      "What's Missing": "A successful enrichment run and final scoring output.",
       Status: STATUS.ERROR,
       "Last Processed At": nowIsoString()
     });
+    sendLeadPreview(
+      buildLeadPreviewPayload({
+        runId: logger.context.runId,
+        leadRowNumber: rowNumber,
+        processingStatus: STATUS.ERROR,
+        errorMessage: message,
+        input,
+        normalized,
+        assessment,
+        scoredLead,
+        repOutputs,
+        rowOutput: {
+          "Lead Score": 0,
+          "Lead Tier": "COLD",
+          "Lead Score Reason": `Processing failed: ${message}`,
+          "Address / Property Validation": "Processing failed before address validation completed.",
+          "Why Prioritize": "Do not prioritize until the row processes successfully.",
+          "What's Missing": "A successful enrichment run and final scoring output.",
+          Status: STATUS.ERROR,
+          "Last Processed At": nowIsoString()
+        }
+      }),
+      logger
+    );
   } finally {
     lock.releaseLock();
   }

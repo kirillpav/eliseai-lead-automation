@@ -14,8 +14,11 @@ export const OUTPUT_HEADERS = [
   "Enriched Company Info",
   "Address / Property Validation",
   "Lead Score",
+  "Lead Tier",
   "Lead Score Reason",
   "Sales Insights",
+  "Why Prioritize",
+  "What's Missing",
   "Draft Outreach Email",
   "Status",
   "Last Processed At"
@@ -135,6 +138,32 @@ export const SCORE_WEIGHTS = {
   missingOrInconsistent: -18,
   unrelatedIndustry: -24,
   genericEmailNoDomain: -12
+} as const;
+
+export const LEAD_TIERS = {
+  HOT: "HOT",
+  WARM: "WARM",
+  REVIEW: "REVIEW",
+  COLD: "COLD"
+} as const;
+
+export const LEAD_TIER_STYLES = {
+  HOT: {
+    background: "#d93025",
+    fontColor: "#ffffff"
+  },
+  WARM: {
+    background: "#f29900",
+    fontColor: "#1f1f1f"
+  },
+  REVIEW: {
+    background: "#fbbc04",
+    fontColor: "#1f1f1f"
+  },
+  COLD: {
+    background: "#9aa0a6",
+    fontColor: "#ffffff"
+  }
 } as const;
 
 export const OPENAI_RESPONSE_SCHEMA = {

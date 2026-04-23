@@ -1,5 +1,6 @@
 import {
   BROAD_REAL_ESTATE_KEYWORDS,
+  LEAD_TIERS,
   NEGATIVE_FIT_KEYWORDS,
   POSITIVE_FIT_KEYWORDS,
   SCORE_WEIGHTS,
@@ -7,7 +8,7 @@ import {
   STRONG_FIT_PHRASES
 } from "./constants.js";
 import type { LeadLogger } from "./logger.js";
-import type { LeadAssessment, ScoredLead, ScoreSignal } from "./types.js";
+import type { LeadAssessment, LeadTier, ScoredLead, ScoreSignal } from "./types.js";
 import { clamp, normalizeComparisonText, truncate, uniqueStrings } from "./utils.js";
 
 function countKeywordMatches(text: string, keywords: readonly string[]): string[] {
@@ -103,6 +104,22 @@ function pushSignal(signals: ScoreSignal[], label: string, points: number): void
   signals.push({ label, points });
 }
 
+export function deriveLeadTier(score: number): LeadTier {
+  if (score >= 80) {
+    return LEAD_TIERS.HOT;
+  }
+
+  if (score >= 55) {
+    return LEAD_TIERS.WARM;
+  }
+
+  if (score >= 25) {
+    return LEAD_TIERS.REVIEW;
+  }
+
+  return LEAD_TIERS.COLD;
+}
+
 function buildScoreReason(
   fit: ReturnType<typeof detectFit>,
   positiveSignals: string[],
@@ -119,7 +136,7 @@ function buildScoreReason(
 
     const negativeClause =
       fit.conditionalFit
-        ? "fit is uncertain because the company looks like a broad real estate services firm rather than a clear multifamily or residential property-management lead"
+        ? "fit is uncertain because the company appears more commercial-real-estate-oriented than clearly multifamily or residential"
         : negativeSignals[0].toLowerCase();
 
     return truncate(`${positiveClause}, but ${negativeClause}.`, 220);
@@ -136,7 +153,7 @@ function buildScoreReason(
             : "Some lead details were validated";
 
     return truncate(
-      `${validationPrefix}, but fit is uncertain because the company looks like a broad real estate services firm rather than a clear multifamily or residential property-management lead.`,
+      `${validationPrefix}, but fit is uncertain because the company appears more commercial-real-estate-oriented than clearly multifamily or residential.`,
       220
     );
   }
@@ -232,6 +249,7 @@ export function scoreLead(assessment: LeadAssessment, logger?: LeadLogger): Scor
 
   const rawScore = signals.reduce((sum, signal) => sum + signal.points, 0);
   const score = clamp(rawScore, 0, 100);
+  const tier = deriveLeadTier(score);
 
   const positiveSignals = signals
     .filter((signal) => signal.points > 0)
@@ -258,6 +276,7 @@ export function scoreLead(assessment: LeadAssessment, logger?: LeadLogger): Scor
 
   const result = {
     score,
+    tier,
     recommendedStatus,
     fitLabel: fit.fitLabel,
     scoreReason,
@@ -267,6 +286,7 @@ export function scoreLead(assessment: LeadAssessment, logger?: LeadLogger): Scor
   };
   logger?.info("lead.scoring.completed", {
     score: result.score,
+    tier: result.tier,
     recommendedStatus: result.recommendedStatus,
     fitLabel: result.fitLabel,
     positiveSignals: result.positiveSignals,

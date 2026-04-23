@@ -1,6 +1,6 @@
 import { BROAD_REAL_ESTATE_KEYWORDS } from "./constants.js";
 import type { LeadAssessment, RepOutputs, ScoredLead } from "./types.js";
-import { formatInlineInsights, normalizeComparisonText, truncate } from "./utils.js";
+import { formatInlineInsights, normalizeComparisonText, truncate, uniqueStrings } from "./utils.js";
 
 function looksLikeBroadRealEstateServicesFirm(assessment: LeadAssessment): boolean {
   const companyText = normalizeComparisonText(
@@ -30,6 +30,116 @@ function buildValidationClause(assessment: LeadAssessment): string {
   }
 
   return "The available lead data is still limited";
+}
+
+function isConditionalFit(scoredLead: ScoredLead): boolean {
+  return scoredLead.fitLabel === "Possible fit only if the contact supports residential leasing or resident-facing property operations";
+}
+
+function formatMissingField(field: string): string {
+  switch (field) {
+    case "name":
+      return "contact name";
+    case "email":
+      return "valid work email";
+    case "company":
+      return "company name";
+    case "propertyAddress":
+      return "street-level property address";
+    case "city":
+      return "property city";
+    case "state":
+      return "property state";
+    case "country":
+      return "property country";
+    default:
+      return field;
+  }
+}
+
+function toSentenceList(values: string[]): string {
+  if (values.length === 0) {
+    return "";
+  }
+
+  if (values.length === 1) {
+    return values[0];
+  }
+
+  if (values.length === 2) {
+    return `${values[0]} and ${values[1]}`;
+  }
+
+  return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
+}
+
+export function buildActionabilityOutputs(
+  assessment: LeadAssessment,
+  scoredLead: ScoredLead
+): {
+  whyPrioritize: string;
+  whatsMissing: string;
+} {
+  const whyPrioritize = (() => {
+    if (scoredLead.fitLabel === "Strong multifamily / property-operations fit") {
+      const validationDetails = uniqueStrings([
+        assessment.company.companyProfileFound ? "validated company identity" : "",
+        assessment.address.isValid ? "validated property address" : ""
+      ]);
+
+      return truncate(
+        `Strong multifamily/property-operations fit${validationDetails.length ? ` with ${toSentenceList(validationDetails)}` : ""}${assessment.locationContext.hasStrongHousingSignal ? ", plus a renter-dense local housing signal" : ""}.`,
+        180
+      );
+    }
+
+    if (isConditionalFit(scoredLead)) {
+      return truncate(
+        "Possible fit only if this contact supports residential leasing or resident operations at this location.",
+        180
+      );
+    }
+
+    if (scoredLead.fitLabel === "Possible residential property-operations fit") {
+      return truncate(
+        "Some residential property-operations signal is present, so this lead is worth a quick qualification pass.",
+        180
+      );
+    }
+
+    if (assessment.company.companyProfileFound || assessment.address.isValid) {
+      return truncate(
+        "Some core lead data was validated, but there is not yet a strong multifamily or residential property-management signal.",
+        180
+      );
+    }
+
+    return "No strong prioritize signal yet beyond the submitted lead details.";
+  })();
+
+  const missingItems = uniqueStrings([
+    ...assessment.normalized.missingCriticalFields.map(formatMissingField),
+    !assessment.normalized.emailValid ? "valid work email" : "",
+    assessment.normalized.genericEmailDomain ? "non-generic work email or matching company domain" : "",
+    !assessment.company.companyProfileFound ? "verified company profile" : "",
+    !assessment.company.canonicalDomain ? "resolved company domain" : "",
+    !assessment.address.isValid ? "validated property address" : "",
+    assessment.normalized.propertyAddress && !assessment.address.isComplete ? "complete street-level address match" : "",
+    isConditionalFit(scoredLead) ? "confirmation that the contact owns residential leasing or resident operations" : "",
+    scoredLead.fitLabel === "Unclear fit" || scoredLead.fitLabel === "Possible residential property-operations fit"
+      ? "clear multifamily or residential property-management signal"
+      : ""
+  ]);
+
+  const whatsMissing =
+    missingItems.length > 0
+      ? truncate(`Still need ${toSentenceList(missingItems)}.`, 220)
+      : "No major gaps; ready for outreach.";
+
+  return {
+    whyPrioritize,
+    whatsMissing
+  };
 }
 
 function buildFallbackOutreachEmail(assessment: LeadAssessment, companyName: string, scoredLead: ScoredLead): string {
@@ -93,7 +203,7 @@ export function buildFallbackRepOutputs(assessment: LeadAssessment, scoredLead: 
   const insightOne =
     scoredLead.fitLabel === "Strong multifamily / property-operations fit"
       ? "Strong multifamily/property-operations fit based on company profile and scale"
-      : scoredLead.fitLabel === "Possible fit only if the contact supports residential leasing or resident-facing property operations"
+      : isConditionalFit(scoredLead)
         ? "Possible fit only if the contact supports residential leasing or resident-facing property operations at this location"
         : scoredLead.fitLabel === "Possible residential property-operations fit"
         ? "Possible multifamily/property-operations fit that needs quick review"
@@ -110,7 +220,7 @@ export function buildFallbackRepOutputs(assessment: LeadAssessment, scoredLead: 
       ? `Prioritize now because ${assessment.locationContext.summary.toLowerCase()} and multifamily teams often carry meaningful renter inquiry volume`
       : scoredLead.score >= 75
         ? "Prioritize now because large operators often have meaningful leasing and resident inquiry volume"
-        : scoredLead.fitLabel === "Possible fit only if the contact supports residential leasing or resident-facing property operations"
+        : isConditionalFit(scoredLead)
           ? "Deprioritize until the contact is confirmed to own residential leasing or resident-facing property operations"
           : "Hold for review until the record has clearer property details or stronger contact context";
 

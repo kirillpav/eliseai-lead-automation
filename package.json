@@ -7,7 +7,11 @@
     "build": "node ./scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
-    "check": "npm run typecheck && npm run test"
+    "check": "npm run typecheck && npm run test",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "web:start": "npm --prefix web run start",
+    "web:typecheck": "npm --prefix web run typecheck"
   },
   "devDependencies": {
     "@google/clasp": "^2.4.2",

@@ -1,5 +1,7 @@
+import { extractOpenAiUsage, extractOutputText, extractResponseId, parseJsonSafely } from "../shared/openai-responses.js";
+import { buildGenerationIngestPayload, sendGenerationAnalytics } from "./analytics.js";
 import { OPENAI_RESPONSE_SCHEMA } from "./constants.js";
-import { fetchJson } from "./http.js";
+import { fetchJsonWithMeta, HttpError } from "./http.js";
 import type { LeadAssessment, RepOutputs, ScoredLead } from "./types.js";
 import { getConfig } from "./config.js";
 import type { LeadLogger } from "./logger.js";
@@ -7,25 +9,10 @@ import { buildFallbackRepOutputs } from "./rep-output.js";
 import { formatInlineInsights, truncate } from "./utils.js";
 
 interface OpenAiResponsesResponse {
+  id?: string;
   output_text?: string;
-  output?: Array<{
-    content?: Array<{
-      type?: string;
-      text?: string;
-    }>;
-  }>;
-}
-
-function extractOutputText(response: OpenAiResponsesResponse): string {
-  if (response.output_text) {
-    return response.output_text;
-  }
-
-  return (response.output ?? [])
-    .flatMap((item) => item.content ?? [])
-    .filter((item) => item.type === "output_text" && item.text)
-    .map((item) => item.text)
-    .join("");
+  output?: unknown[];
+  usage?: Record<string, unknown>;
 }
 
 function buildPrompt(assessment: LeadAssessment, scoredLead: ScoredLead): string {
@@ -94,41 +81,47 @@ export function generateRepOutputs(assessment: LeadAssessment, scoredLead: Score
     return buildFallbackRepOutputs(assessment, scoredLead);
   }
 
+  const prompt = buildPrompt(assessment, scoredLead);
+  const requestPayload = {
+    model: config.openAiModel,
+    input: [
+      {
+        role: "system",
+        content: "Return only valid JSON matching the supplied schema."
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "lead_rep_outputs",
+        strict: true,
+        schema: OPENAI_RESPONSE_SCHEMA
+      }
+    }
+  };
+
   try {
     logger?.info("lead.llm.start", {
       model: config.openAiModel,
       company: assessment.normalized.company,
       score: scoredLead.score
     });
-    const response = fetchJson<OpenAiResponsesResponse>("https://api.openai.com/v1/responses", {
+    const response = fetchJsonWithMeta<OpenAiResponsesResponse>("https://api.openai.com/v1/responses", {
       method: "post",
       headers: {
         Authorization: `Bearer ${config.openAiApiKey}`
       },
-      payload: {
-        model: config.openAiModel,
-        input: [
-          {
-            role: "system",
-            content: "Return only valid JSON matching the supplied schema."
-          },
-          {
-            role: "user",
-            content: buildPrompt(assessment, scoredLead)
-          }
-        ],
-        text: {
-          format: {
-            type: "json_schema",
-            name: "lead_rep_outputs",
-            strict: true,
-            schema: OPENAI_RESPONSE_SCHEMA
-          }
-        }
-      }
+      payload: requestPayload
     });
 
-    const outputText = extractOutputText(response);
+    const responseBody: unknown = response.data;
+    const outputText = extractOutputText(responseBody);
+    const responseId = extractResponseId(responseBody);
+    const usage = extractOpenAiUsage(responseBody);
     const parsed = JSON.parse(outputText) as RepOutputs;
 
     const result = {
@@ -137,6 +130,23 @@ export function generateRepOutputs(assessment: LeadAssessment, scoredLead: Score
       draftOutreachEmail: truncate(parsed.draftOutreachEmail, 700),
       usedFallback: false
     };
+    if (logger?.context) {
+      sendGenerationAnalytics(
+        buildGenerationIngestPayload({
+          runId: logger.context.runId,
+          leadRowNumber: logger.context.rowNumber,
+          model: config.openAiModel,
+          prompt,
+          outputText,
+          requestPayload,
+          responseBody,
+          responseId,
+          usage,
+          callStatus: "success"
+        }),
+        logger
+      );
+    }
     logger?.info("lead.llm.success", {
       usedFallback: result.usedFallback,
       enrichedCompanyInfo: result.enrichedCompanyInfo,
@@ -144,6 +154,29 @@ export function generateRepOutputs(assessment: LeadAssessment, scoredLead: Score
     });
     return result;
   } catch (_error) {
+    const responseBody =
+      _error instanceof HttpError ? parseJsonSafely(_error.responseText) ?? { rawText: _error.responseText } : null;
+    const outputText = extractOutputText(responseBody);
+    const usage = extractOpenAiUsage(responseBody);
+    const responseId = extractResponseId(responseBody);
+    if (logger?.context) {
+      sendGenerationAnalytics(
+        buildGenerationIngestPayload({
+          runId: logger.context.runId,
+          leadRowNumber: logger.context.rowNumber,
+          model: config.openAiModel,
+          prompt,
+          outputText,
+          requestPayload,
+          responseBody,
+          responseId,
+          usage,
+          callStatus: "error",
+          errorMessage: _error instanceof Error ? _error.message : "Unknown OpenAI error"
+        }),
+        logger
+      );
+    }
     logger?.warn("lead.llm.fallback", {
       reason: "openai-error",
       error: _error

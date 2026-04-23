@@ -4,6 +4,12 @@ interface JsonFetchOptions {
   payload?: unknown;
 }
 
+export interface JsonFetchResult<T> {
+  data: T;
+  statusCode: number;
+  responseText: string;
+}
+
 export class HttpError extends Error {
   readonly statusCode: number;
   readonly responseText: string;
@@ -16,7 +22,7 @@ export class HttpError extends Error {
   }
 }
 
-export function fetchJson<T>(url: string, options: JsonFetchOptions = {}): T {
+export function fetchJsonWithMeta<T>(url: string, options: JsonFetchOptions = {}): JsonFetchResult<T> {
   const response = UrlFetchApp.fetch(url, {
     method: options.method ?? "get",
     headers: options.headers ?? {},
@@ -32,5 +38,13 @@ export function fetchJson<T>(url: string, options: JsonFetchOptions = {}): T {
     throw new HttpError(`Request failed with status ${statusCode}`, statusCode, responseText);
   }
 
-  return JSON.parse(responseText) as T;
+  return {
+    data: JSON.parse(responseText) as T,
+    statusCode,
+    responseText
+  };
+}
+
+export function fetchJson<T>(url: string, options: JsonFetchOptions = {}): T {
+  return fetchJsonWithMeta<T>(url, options).data;
 }

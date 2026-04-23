@@ -2,4 +2,6 @@ node_modules/
 dist/
 .clasp.json
 .env
-
+.next/
+web/.env.local
+web/data/

@@ -14,6 +14,8 @@ export function getConfig(): AppConfig {
     openAiModel: getProperty("OPENAI_MODEL", "gpt-5.4-mini"),
     theCompaniesApiKey: getProperty("THECOMPANIES_API_KEY"),
     censusApiKey: getProperty("CENSUS_API_KEY"),
+    analyticsBaseUrl: getProperty("ANALYTICS_BASE_URL"),
+    analyticsIngestToken: getProperty("ANALYTICS_INGEST_TOKEN"),
     leadsSheetName: getProperty("LEADS_SHEET_NAME", "Leads"),
     sweepIntervalMinutes: Number(getProperty("SWEEP_INTERVAL_MINUTES", "5")) || 5
   };
