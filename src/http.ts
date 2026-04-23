@@ -1,0 +1,36 @@
+interface JsonFetchOptions {
+  method?: "get" | "post";
+  headers?: Record<string, string>;
+  payload?: unknown;
+}
+
+export class HttpError extends Error {
+  readonly statusCode: number;
+  readonly responseText: string;
+
+  constructor(message: string, statusCode: number, responseText: string) {
+    super(message);
+    this.name = "HttpError";
+    this.statusCode = statusCode;
+    this.responseText = responseText;
+  }
+}
+
+export function fetchJson<T>(url: string, options: JsonFetchOptions = {}): T {
+  const response = UrlFetchApp.fetch(url, {
+    method: options.method ?? "get",
+    headers: options.headers ?? {},
+    muteHttpExceptions: true,
+    contentType: "application/json",
+    payload: options.payload === undefined ? undefined : JSON.stringify(options.payload)
+  });
+
+  const statusCode = response.getResponseCode();
+  const responseText = response.getContentText();
+
+  if (statusCode < 200 || statusCode >= 300) {
+    throw new HttpError(`Request failed with status ${statusCode}`, statusCode, responseText);
+  }
+
+  return JSON.parse(responseText) as T;
+}
