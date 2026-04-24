@@ -1,4 +1,4 @@
-import { ALL_HEADERS, INPUT_HEADERS } from "@shared/constants";
+import { ALL_HEADERS, INPUT_HEADERS, STATUS } from "@shared/constants";
 import type { HeaderName, LeadInput, LeadStatus } from "@shared/types";
 
 export interface Lead {
@@ -115,5 +115,11 @@ export function leadInputToRow(input: LeadInput, index: HeaderIndex, totalColumn
     }
     values[position] = input[INPUT_FIELD_BY_HEADER[header]];
   }
+
+  const statusPosition = index.Status;
+  if (statusPosition !== undefined && statusPosition < totalColumns) {
+    values[statusPosition] = STATUS.NEW;
+  }
+
   return values;
 }
