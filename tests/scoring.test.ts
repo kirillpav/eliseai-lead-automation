@@ -63,6 +63,11 @@ function makeAssessment(overrides: Partial<LeadAssessment> = {}): LeadAssessment
       medianGrossRent: 1850,
       countyName: "Dallas County",
       tractName: "Census Tract 1",
+      housingSignalLevel: "high",
+      highRenterShare: true,
+      largeHousingUnitBase: true,
+      premiumRentMarket: true,
+      housingSignalTags: ["high renter share", "large housing-unit base", "premium rent market"],
       hasStrongHousingSignal: true
     },
     ...overrides
@@ -78,6 +83,7 @@ test("scoreLead rewards strong multifamily and validated data signals", () => {
   assert.match(scored.fitLabel, /Strong multifamily/);
   assert.ok(scored.positiveSignals.some((signal) => signal.includes("multifamily")));
   assert.ok(scored.positiveSignals.some((signal) => signal.includes("exceptional signal quality")));
+  assert.ok(scored.positiveSignals.some((signal) => signal.includes("high renter share")));
 });
 
 test("scoreLead penalizes unrelated adjacent businesses", () => {
@@ -105,6 +111,11 @@ test("scoreLead penalizes unrelated adjacent businesses", () => {
         ...makeAssessment().locationContext,
         available: false,
         summary: "",
+        housingSignalLevel: "unknown",
+        highRenterShare: false,
+        largeHousingUnitBase: false,
+        premiumRentMarket: false,
+        housingSignalTags: [],
         hasStrongHousingSignal: false
       }
     })

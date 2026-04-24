@@ -95,6 +95,11 @@ function emptyLocationContext(): LocationContext {
     medianGrossRent: null,
     countyName: "",
     tractName: "",
+    housingSignalLevel: "unknown",
+    highRenterShare: false,
+    largeHousingUnitBase: false,
+    premiumRentMarket: false,
+    housingSignalTags: [],
     hasStrongHousingSignal: false
   };
 }
@@ -464,12 +469,18 @@ function enrichLocationContextViaCensus(address: AddressValidation, logger?: Lea
   const medianGrossRent = toNumberOrNull(record.DP04_0134E);
   const countyName = cleanText(tract.COUNTYNAME);
   const tractName = cleanText(record.NAME);
-
-  const hasStrongHousingSignal = Boolean(
-    (renterOccupiedPct !== null && renterOccupiedPct >= 50) ||
-      (housingUnits !== null && housingUnits >= 5000) ||
-      (medianGrossRent !== null && medianGrossRent >= 1500)
-  );
+  const highRenterShare = renterOccupiedPct !== null && renterOccupiedPct >= 50;
+  const largeHousingUnitBase = housingUnits !== null && housingUnits >= 5000;
+  const premiumRentMarket = medianGrossRent !== null && medianGrossRent >= 1500;
+  const housingSignalTags = uniqueStrings([
+    highRenterShare ? "high renter share" : "",
+    largeHousingUnitBase ? "large housing-unit base" : "",
+    premiumRentMarket ? "premium rent market" : ""
+  ]);
+  const availableMetricCount = [renterOccupiedPct, housingUnits, medianGrossRent].filter((value) => value !== null).length;
+  const housingSignalLevel: LocationContext["housingSignalLevel"] =
+    availableMetricCount === 0 ? "unknown" : housingSignalTags.length >= 2 ? "high" : housingSignalTags.length === 1 ? "medium" : "low";
+  const hasStrongHousingSignal = housingSignalLevel === "high" || housingSignalLevel === "medium";
 
   const summaryParts = uniqueStrings([
     renterOccupiedPct !== null ? `renter share is ${renterOccupiedPct.toFixed(1)}%` : "",
@@ -485,6 +496,11 @@ function enrichLocationContextViaCensus(address: AddressValidation, logger?: Lea
     medianGrossRent,
     countyName,
     tractName,
+    housingSignalLevel,
+    highRenterShare,
+    largeHousingUnitBase,
+    premiumRentMarket,
+    housingSignalTags,
     hasStrongHousingSignal
   };
   logger?.info("provider.census.context.hit", context);

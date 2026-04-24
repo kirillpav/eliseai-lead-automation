@@ -34,7 +34,17 @@ function buildPrompt(assessment: LeadAssessment, scoredLead: ScoredLead): string
       headquarters: assessment.company.headquarters,
       corroboratedIdentity: assessment.company.corroboratedIdentity,
       addressConfidence: assessment.address.confidence,
-      locationContext: assessment.locationContext.summary,
+      locationContext: {
+        summary: assessment.locationContext.summary,
+        housingSignalLevel: assessment.locationContext.housingSignalLevel,
+        highRenterShare: assessment.locationContext.highRenterShare,
+        largeHousingUnitBase: assessment.locationContext.largeHousingUnitBase,
+        premiumRentMarket: assessment.locationContext.premiumRentMarket,
+        housingSignalTags: assessment.locationContext.housingSignalTags,
+        renterOccupiedPct: assessment.locationContext.renterOccupiedPct,
+        housingUnits: assessment.locationContext.housingUnits,
+        medianGrossRent: assessment.locationContext.medianGrossRent
+      },
       hasValidatedPropertyAddress: assessment.address.isValid && assessment.address.isComplete
     },
     scoring: {
@@ -58,6 +68,7 @@ function buildPrompt(assessment: LeadAssessment, scoredLead: ScoredLead): string
     "Sales insights must be a single line with exactly three clauses joined by ' • '.",
     "Do not use labels like Fit:, Confidence:, or Prioritize now:, and do not use markdown bullets, pipes, or numbering.",
     "The three clauses should cover: fit assessment, confidence in the lead data, and why to prioritize or deprioritize now.",
+    "When housing context is available, use the specific signal level or tags, such as high renter share, large housing-unit base, or premium rent market; do not reduce it to a generic Census bonus.",
     "For uncertain leads, use cautious language like 'Possible fit only if...' rather than 'Likely fit...'.",
     "Draft outreach email must be plain text, short, and personalized without sounding generic.",
     "For uncertain or conditional-fit leads, open with the concrete company and property context you found, then condition the message on whether the contact actually supports residential leasing or resident-facing property operations there.",

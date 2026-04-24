@@ -73,6 +73,19 @@ function toSentenceList(values: string[]): string {
   return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
 }
 
+function buildHousingSignalPhrase(assessment: LeadAssessment): string {
+  if (!assessment.locationContext.available || assessment.locationContext.housingSignalLevel === "unknown") {
+    return "";
+  }
+
+  const tags = assessment.locationContext.housingSignalTags;
+  if (tags.length > 0) {
+    return `${assessment.locationContext.housingSignalLevel} local housing signal from ${toSentenceList(tags)}`;
+  }
+
+  return `${assessment.locationContext.housingSignalLevel} local housing signal`;
+}
+
 export function buildActionabilityOutputs(
   assessment: LeadAssessment,
   scoredLead: ScoredLead
@@ -88,7 +101,7 @@ export function buildActionabilityOutputs(
       ]);
 
       return truncate(
-        `Strong multifamily/property-operations fit${validationDetails.length ? ` with ${toSentenceList(validationDetails)}` : ""}${assessment.locationContext.hasStrongHousingSignal ? ", plus a renter-dense local housing signal" : ""}.`,
+        `Strong multifamily/property-operations fit${validationDetails.length ? ` with ${toSentenceList(validationDetails)}` : ""}${buildHousingSignalPhrase(assessment) ? `, plus ${buildHousingSignalPhrase(assessment)}` : ""}.`,
         180
       );
     }
@@ -217,7 +230,7 @@ export function buildFallbackRepOutputs(assessment: LeadAssessment, scoredLead: 
 
   const insightThree =
     assessment.locationContext.hasStrongHousingSignal && assessment.locationContext.summary
-      ? `Prioritize now because ${assessment.locationContext.summary.toLowerCase()} and multifamily teams often carry meaningful renter inquiry volume`
+      ? `Prioritize now because ${buildHousingSignalPhrase(assessment) || assessment.locationContext.summary.toLowerCase()} and multifamily teams often carry meaningful renter inquiry volume`
       : scoredLead.score >= 75
         ? "Prioritize now because large operators often have meaningful leasing and resident inquiry volume"
         : isConditionalFit(scoredLead)

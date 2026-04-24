@@ -77,6 +77,11 @@ export interface LocationContext {
   medianGrossRent: number | null;
   countyName: string;
   tractName: string;
+  housingSignalLevel: "high" | "medium" | "low" | "unknown";
+  highRenterShare: boolean;
+  largeHousingUnitBase: boolean;
+  premiumRentMarket: boolean;
+  housingSignalTags: string[];
   hasStrongHousingSignal: boolean;
 }
 

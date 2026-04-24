@@ -202,8 +202,10 @@ export function scoreLead(assessment: LeadAssessment, logger?: LeadLogger): Scor
     pushSignal(signals, "Company identity is supported by the resolved domain and company profile", SCORE_WEIGHTS.corroboratedIdentity);
   }
 
-  if (locationContext.hasStrongHousingSignal) {
-    pushSignal(signals, "Census data suggests a renter-dense residential market", SCORE_WEIGHTS.strongHousingContext);
+  if (locationContext.housingSignalLevel === "high" || locationContext.housingSignalLevel === "medium") {
+    const signalDetails =
+      locationContext.housingSignalTags.length > 0 ? `: ${locationContext.housingSignalTags.join(", ")}` : "";
+    pushSignal(signals, `Census housing context is ${locationContext.housingSignalLevel}${signalDetails}`, SCORE_WEIGHTS.strongHousingContext);
   }
 
   const qualifiesExceptionalBonus =
