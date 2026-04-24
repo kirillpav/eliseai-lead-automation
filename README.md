@@ -1,9 +1,9 @@
 # EliseAI Lead Processing Pipeline
 
-This repo now contains two connected pieces:
+This repo contains two pieces that share one source of truth — the leads spreadsheet:
 
 1. A Google Sheets-bound Apps Script pipeline that enriches and scores inbound leads.
-2. A standalone Next.js web app that receives both mirrored lead-processing snapshots and generation-call logs over HTTP.
+2. A standalone Next.js web app in [`web/`](web/) that mirrors the same sheet via the Google Sheets API, polls for updates, and lets you add new leads.
 
 ## Apps Script Setup
 
@@ -25,10 +25,10 @@ Configure these in Apps Script `Project Settings -> Script properties`:
 - `CENSUS_API_KEY` optional
 - `LEADS_SHEET_NAME` optional, default: `Leads`
 - `SWEEP_INTERVAL_MINUTES` optional, default: `5`
-- `ANALYTICS_BASE_URL` optional, base URL for the standalone web app, for example `https://analytics.internal.example`
-- `ANALYTICS_INGEST_TOKEN` optional, shared bearer token used when posting generation logs
+- `ANALYTICS_BASE_URL` optional — base URL of an external sink for generation/lead snapshots. The Apps Script will best-effort POST events when set.
+- `ANALYTICS_INGEST_TOKEN` optional — bearer token sent with analytics requests.
 
-If `ANALYTICS_BASE_URL` or `ANALYTICS_INGEST_TOKEN` is missing, lead processing still runs and analytics delivery is skipped.
+If either analytics property is missing, lead processing still runs and analytics delivery is silently skipped.
 
 ### Sheet Columns
 
@@ -64,55 +64,22 @@ Required headers:
 
 ## Standalone Web App
 
-The dashboard lives in [web/package.json](/Users/kirillpavlov/Projects/eliseai-automating-inbdound-leads/web/package.json) and stores data in SQLite.
+The dashboard lives in [`web/`](web/) as an independent Next.js project. It reads and writes the same Google Sheet via the Sheets API using a service account, and the dashboard polls every 10 seconds so that new or updated rows in the sheet appear in the UI shortly after.
 
 ### Web App Setup
 
-1. Install dependencies:
-   - `cd web && npm install`
-2. Copy [web/.env.example](/Users/kirillpavlov/Projects/eliseai-automating-inbdound-leads/web/.env.example) to `web/.env.local`
-3. Configure:
-   - `DATABASE_URL`
-   - `INGEST_TOKEN`
-   - `OPENAI_PRICING_JSON`
-4. Start the app:
-   - `npm run web:dev`
+1. Install dependencies: `cd web && npm install`.
+2. Create a Google Cloud service account and JSON key, enable the Google Sheets API, and share the target sheet with the service account email as Editor.
+3. Copy [`web/.env.example`](web/.env.example) to `web/.env.local` and fill in `GOOGLE_SHEETS_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`, `LEADS_SHEET_NAME`, and `WEB_APP_USER` / `WEB_APP_PASSWORD` (Basic Auth credentials).
+4. `npm run dev` and open http://localhost:3000.
 
-### Pricing Configuration
+See [`web/README.md`](web/README.md) for the full setup walkthrough.
 
-`OPENAI_PRICING_JSON` is a model-keyed JSON object with per-1M-token rates. Example shape:
+### Important: Sheets-API writes do not fire `onEdit`
 
-```json
-{
-  "gpt-5.4-mini": {
-    "input": 0.0,
-    "cached_input": 0.0,
-    "output": 0.0
-  }
-}
-```
-
-Replace the placeholder values with the rates you want the dashboard to apply at ingest time.
-
-### Ingestion Contract
-
-The web app exposes:
-
-- `POST /api/ingest/generation`
-
-Authentication:
-
-- `Authorization: Bearer <INGEST_TOKEN>`
-
-The Apps Script producer sends two best-effort POST streams:
-
-- `POST /api/ingest/lead` for mirrored lead-processing snapshots
-- `POST /api/ingest/generation` for raw OpenAI generation traces
-
-Lead snapshots include the same processing state the sheet script uses: input, normalized lead, enrichment, address validation, location context, scoring, rep outputs, and final row output. Generation traces still include prompt, output, request payload, response JSON, token usage, and pricing.
+A row added through the web app's "Add Lead" form is appended to the sheet via the Sheets API, which does **not** trigger the Apps Script `onEdit` handler. The time-based sweep (`processNewLeadRows`, default every 5 minutes) is what picks those rows up. Run `installTriggers` once from the Apps Script editor so the sweep is active.
 
 ## Tests
 
 - `npm run typecheck`
 - `npm test`
-- `npm run web:typecheck`

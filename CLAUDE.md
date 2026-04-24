@@ -54,3 +54,15 @@ External integrations (TheCompaniesAPI, Census, OpenAI) are all best-effort. Eve
 ### Tests
 
 `tests/` uses the Node built-in test runner (`node --test`) via `tsx`, exercising pure modules (`normalization`, `scoring`) — they don't load Apps Script globals. Keep new pure logic in modules that don't import `UrlFetchApp`/`SpreadsheetApp` so it remains testable here; pipeline-level code that touches Apps Script globals can only be verified by deploying to a test sheet.
+
+## `web/` — Next.js dashboard (separate npm project)
+
+A standalone Next.js 15 App Router project lives in `web/`. It is intentionally **not** in the root npm workspace — the root `tsconfig.json` targets the Apps Script V8 runtime and would conflict with React/Node types. Run all `web/` commands from inside that directory.
+
+- **Source of truth**: the same Google Sheet. `web/` reads/writes it via the official `googleapis` SDK using a service-account JWT (`web/lib/sheets.ts`). Service-account credentials and the Basic Auth gate live in `web/.env.local` (gitignored). See [web/README.md](web/README.md) for setup.
+- **Sync model**: client polls `GET /api/leads` every 10s (`web/components/LeadsTable.tsx`). There is no push/webhook from Apps Script.
+- **Add Lead form** appends a row with the 7 input columns filled and `Status` blank. **Important**: Sheets-API writes do **not** trigger Apps Script `onEdit`, so newly added rows are only enriched on the next time-based sweep (`processNewLeadRows`, default every 5 min). `installTriggers` must have been run for this to work.
+- **Auth**: HTTP Basic via `web/middleware.ts`. The matcher excludes Next internals, and `/api/health` is allowlisted for unauthenticated liveness checks.
+- **Shared code**: `web/tsconfig.json` defines `@shared/*` → `../src/*`. Only the pure modules (`src/types.ts`, `src/constants.ts`) are safe to import — anything that touches Apps Script globals will break in Node. `web/lib/lead-mapper.ts` builds a header index from `ALL_HEADERS`, mirroring the same column-order tolerance the Apps Script side uses.
+- **No pipeline duplication**: enrichment, scoring, and LLM calls all stay in Apps Script. The web app is purely a viewer + lead-creation UI; do not reimplement scoring there.
+- **Commands** (run inside `web/`): `npm run dev`, `npm run build`, `npm run typecheck`, `npm run lint`.
