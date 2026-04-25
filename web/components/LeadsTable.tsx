@@ -2,11 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Lead } from "@/lib/lead-mapper";
+import { needsReview, reviewSignals } from "@/lib/review-filters";
 import { AddLeadDialog } from "./AddLeadDialog";
 import { LeadDetailDrawer } from "./LeadDetailDrawer";
 import { StatusBadge } from "./StatusBadge";
 
 const POLL_INTERVAL_MS = 10_000;
+
+type ViewMode = "all" | "review";
 
 interface ApiResponse {
   leads: Lead[];
@@ -63,6 +66,7 @@ export function LeadsTable() {
   const [now, setNow] = useState(() => Date.now());
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [view, setView] = useState<ViewMode>("all");
   const inFlight = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -107,6 +111,9 @@ export function LeadsTable() {
     });
   }, [leads]);
 
+  const reviewQueue = useMemo(() => sortedLeads.filter(needsReview), [sortedLeads]);
+  const visibleLeads = view === "review" ? reviewQueue : sortedLeads;
+
   const selectedLead = useMemo(
     () => sortedLeads.find((lead) => lead.rowNumber === selectedRow) ?? null,
     [sortedLeads, selectedRow]
@@ -145,6 +152,31 @@ export function LeadsTable() {
         </div>
       </div>
 
+      <div className="flex gap-1 rounded-md border border-slate-200 bg-slate-100 p-1 text-sm dark:border-slate-800 dark:bg-slate-900">
+        <button
+          type="button"
+          onClick={() => setView("all")}
+          className={`flex-1 rounded px-3 py-1.5 font-medium transition ${
+            view === "all"
+              ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-50"
+              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+        >
+          All leads · {sortedLeads.length}
+        </button>
+        <button
+          type="button"
+          onClick={() => setView("review")}
+          className={`flex-1 rounded px-3 py-1.5 font-medium transition ${
+            view === "review"
+              ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-50"
+              : "text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+          }`}
+        >
+          Review queue · {reviewQueue.length}
+        </button>
+      </div>
+
       {error && (
         <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
           {error}
@@ -164,14 +196,16 @@ export function LeadsTable() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {sortedLeads.length === 0 && !loading && (
+            {visibleLeads.length === 0 && !loading && (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
-                  No leads yet. Add one to kick off enrichment.
+                  {view === "review"
+                    ? "Nothing in the review queue. Everything is either auto-enriched or already actioned."
+                    : "No leads yet. Add one to kick off enrichment."}
                 </td>
               </tr>
             )}
-            {sortedLeads.map((lead) => (
+            {visibleLeads.map((lead) => (
               <tr
                 key={lead.rowNumber}
                 onClick={() => setSelectedRow(lead.rowNumber)}
@@ -191,7 +225,36 @@ export function LeadsTable() {
                   {[lead.city, lead.state, lead.country].filter(Boolean).join(", ") || "—"}
                 </td>
                 <td className="px-4 py-3">
-                  <StatusBadge status={lead.status} />
+                  <div className="flex flex-wrap items-center gap-1">
+                    <StatusBadge status={lead.status} />
+                    {lead.reviewDecision === "FIT" && (
+                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200">
+                        ✓ Fit
+                      </span>
+                    )}
+                    {lead.reviewDecision === "NOT_FIT" && (
+                      <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-900 dark:bg-rose-900/40 dark:text-rose-200">
+                        ✗ Not fit
+                      </span>
+                    )}
+                    {lead.outreachApproved === "YES" && (
+                      <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-200">
+                        ✓ Outreach
+                      </span>
+                    )}
+                  </div>
+                  {view === "review" && (
+                    <div className="mt-1 space-y-0.5">
+                      {reviewSignals(lead).map((signal) => (
+                        <div
+                          key={signal.reason}
+                          className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300"
+                        >
+                          {signal.label}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <ScoreBar score={lead.leadScore} />
@@ -205,7 +268,11 @@ export function LeadsTable() {
         </table>
       </div>
 
-      <LeadDetailDrawer lead={selectedLead} onClose={() => setSelectedRow(null)} />
+      <LeadDetailDrawer
+        lead={selectedLead}
+        onClose={() => setSelectedRow(null)}
+        onActionComplete={() => void refresh()}
+      />
       <AddLeadDialog open={addOpen} onClose={() => setAddOpen(false)} onCreated={() => void refresh()} />
     </div>
   );

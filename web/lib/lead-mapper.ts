@@ -1,6 +1,9 @@
 import { ALL_HEADERS, INPUT_HEADERS, STATUS } from "@shared/constants";
 import type { HeaderName, LeadInput, LeadStatus } from "@shared/types";
 
+export type ReviewDecision = "FIT" | "NOT_FIT" | "";
+export type OutreachApproval = "YES" | "";
+
 export interface Lead {
   rowNumber: number;
   name: string;
@@ -15,11 +18,18 @@ export interface Lead {
   enrichedCompanyInfo: string;
   addressValidation: string;
   leadScore: number | null;
+  leadTier: string;
   leadScoreReason: string;
   salesInsights: string;
+  whyPrioritize: string;
+  whatsMissing: string;
   draftOutreachEmail: string;
   status: LeadStatus | "";
   lastProcessedAt: string;
+  reviewDecision: ReviewDecision;
+  outreachApproved: OutreachApproval;
+  reviewedAt: string;
+  reviewedBy: string;
 }
 
 type HeaderIndex = Partial<Record<HeaderName, number>>;
@@ -63,6 +73,15 @@ function isStatus(value: string): value is LeadStatus {
   return value === "NEW" || value === "PENDING" || value === "ENRICHED" || value === "NEEDS_REVIEW" || value === "ERROR";
 }
 
+function toReviewDecision(value: string): ReviewDecision {
+  const upper = value.toUpperCase();
+  return upper === "FIT" || upper === "NOT_FIT" ? upper : "";
+}
+
+function toOutreachApproval(value: string): OutreachApproval {
+  return value.toUpperCase() === "YES" ? "YES" : "";
+}
+
 export function rowToLead(row: unknown[], rowNumber: number, index: HeaderIndex): Lead {
   const statusRaw = cellString(row, index.Status).toUpperCase();
   return {
@@ -79,11 +98,18 @@ export function rowToLead(row: unknown[], rowNumber: number, index: HeaderIndex)
     enrichedCompanyInfo: cellString(row, index["Enriched Company Info"]),
     addressValidation: cellString(row, index["Address / Property Validation"]),
     leadScore: cellNumber(row, index["Lead Score"]),
+    leadTier: cellString(row, index["Lead Tier"]),
     leadScoreReason: cellString(row, index["Lead Score Reason"]),
     salesInsights: cellString(row, index["Sales Insights"]),
+    whyPrioritize: cellString(row, index["Why Prioritize"]),
+    whatsMissing: cellString(row, index["What's Missing"]),
     draftOutreachEmail: cellString(row, index["Draft Outreach Email"]),
     status: isStatus(statusRaw) ? statusRaw : "",
-    lastProcessedAt: cellString(row, index["Last Processed At"])
+    lastProcessedAt: cellString(row, index["Last Processed At"]),
+    reviewDecision: toReviewDecision(cellString(row, index["Review Decision"])),
+    outreachApproved: toOutreachApproval(cellString(row, index["Outreach Approved"])),
+    reviewedAt: cellString(row, index["Reviewed At"]),
+    reviewedBy: cellString(row, index["Reviewed By"])
   };
 }
 
@@ -100,6 +126,8 @@ const INPUT_FIELD_BY_HEADER: Record<(typeof INPUT_HEADERS)[number], keyof LeadIn
   State: "state",
   Country: "country"
 };
+
+export type LeadCellUpdates = Partial<Record<HeaderName, string>>;
 
 export function leadInputToRow(input: LeadInput, index: HeaderIndex, totalColumns: number): string[] {
   const missing = INPUT_HEADERS.filter((header) => index[header] === undefined);

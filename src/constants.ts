@@ -24,7 +24,16 @@ export const OUTPUT_HEADERS = [
   "Last Processed At"
 ] as const;
 
-export const ALL_HEADERS = [...INPUT_HEADERS, ...OUTPUT_HEADERS] as const;
+// Columns written by the web dashboard's review queue. The Apps Script pipeline
+// does NOT read or write these — they're rep metadata only.
+export const REVIEW_HEADERS = [
+  "Review Decision",
+  "Outreach Approved",
+  "Reviewed At",
+  "Reviewed By"
+] as const;
+
+export const ALL_HEADERS = [...INPUT_HEADERS, ...OUTPUT_HEADERS, ...REVIEW_HEADERS] as const;
 
 export const STATUS = {
   NEW: "NEW",
