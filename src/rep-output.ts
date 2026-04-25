@@ -1,4 +1,4 @@
-import { BROAD_REAL_ESTATE_KEYWORDS } from "./constants.js";
+import { BROAD_REAL_ESTATE_KEYWORDS, LEAD_TIERS, STATUS } from "./constants.js";
 import type { LeadAssessment, RepOutputs, ScoredLead } from "./types.js";
 import { formatInlineInsights, normalizeComparisonText, truncate, uniqueStrings } from "./utils.js";
 
@@ -157,15 +157,47 @@ export function buildActionabilityOutputs(
 
 function buildFallbackOutreachEmail(assessment: LeadAssessment, companyName: string, scoredLead: ScoredLead): string {
   const propertyReference = assessment.address.formattedAddress || assessment.normalized.fullAddress;
+  const contactName = assessment.normalized.name || "there";
+  const companyContext = `${companyName}${propertyReference ? ` associated with ${propertyReference}` : ""}`;
+
+  if (scoredLead.recommendedStatus === STATUS.ENRICHED && scoredLead.tier === LEAD_TIERS.HOT) {
+    return truncate(
+      [
+        `Hi ${contactName},`,
+        "",
+        `I came across ${companyContext} and saw a strong multifamily/property-operations signal.`,
+        "EliseAI helps leasing teams handle renter inquiries, follow-up, and resident messages faster without adding more manual coordination for onsite staff.",
+        "Open to a quick conversation about where your team is seeing the most inbound volume today?",
+        "",
+        "Best,"
+      ].join("\n"),
+      700
+    );
+  }
+
+  if (scoredLead.recommendedStatus === STATUS.ENRICHED) {
+    return truncate(
+      [
+        `Hi ${contactName},`,
+        "",
+        `I noticed ${companyContext} and saw signals that it connects to multifamily or residential property operations.`,
+        "EliseAI helps leasing and resident teams respond faster to renter questions, tour follow-up, and routine resident communication.",
+        "Would it be useful to compare where automation could reduce manual work for your team?",
+        "",
+        "Best,"
+      ].join("\n"),
+      700
+    );
+  }
 
   if (scoredLead.fitLabel === "Possible fit only if the contact supports residential leasing or resident-facing property operations") {
     return truncate(
       [
-        `Hi ${assessment.normalized.name || "there"},`,
+        `Hi ${contactName},`,
         "",
         `I’m reaching out because I found ${companyName}${propertyReference ? ` tied to ${propertyReference}` : ""}.`,
-        "If your team supports residential leasing or resident-facing property operations there, EliseAI helps automate inbound leasing and resident communication workflows.",
-        "I’d be happy to share a quick overview if that’s relevant.",
+        "I’m not sure whether your team handles residential leasing or resident operations at that location, but if so, EliseAI can help reduce manual renter inquiry and resident communication work.",
+        "Worth a quick check to see whether this sits with your team?",
         "",
         "Best,"
       ].join("\n"),
@@ -175,11 +207,11 @@ function buildFallbackOutreachEmail(assessment: LeadAssessment, companyName: str
 
   return truncate(
     [
-      `Hi ${assessment.normalized.name || "there"},`,
+      `Hi ${contactName},`,
       "",
-      `I came across ${companyName}${propertyReference ? ` associated with ${propertyReference}` : ""}.`,
-      "If you support leasing or resident operations there, EliseAI helps multifamily teams automate renter inquiries and follow-up so onsite staff can respond faster and spend less time on manual coordination.",
-      "Open to a quick conversation about how your team handles that today?",
+      `I’m doing a quick pass on ${companyName}${propertyReference ? ` and ${propertyReference}` : ""} and wanted to confirm whether this is the right contact for residential leasing or property operations.`,
+      "If there is a multifamily or resident-operations team involved, EliseAI may be relevant for reducing manual renter inquiries and follow-up.",
+      "If not, who would be better to speak with?",
       "",
       "Best,"
     ].join("\n"),

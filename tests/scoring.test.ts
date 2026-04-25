@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildActionabilityOutputs } from "../src/rep-output.js";
+import { buildActionabilityOutputs, buildFallbackRepOutputs } from "../src/rep-output.js";
 import { deriveLeadTier, scoreLead } from "../src/scoring.js";
 import type { LeadAssessment } from "../src/types.js";
 
@@ -269,4 +269,45 @@ test("buildActionabilityOutputs makes review gaps explicit for conditional-fit l
 
   assert.match(actionability.whyPrioritize, /possible fit only if/i);
   assert.match(actionability.whatsMissing, /confirmation that the contact owns residential leasing or resident operations/i);
+});
+
+test("buildFallbackRepOutputs uses direct outreach for HOT enriched leads", () => {
+  const assessment = makeAssessment();
+  const scored = scoreLead(assessment);
+  const outputs = buildFallbackRepOutputs(assessment, scored);
+
+  assert.equal(scored.tier, "HOT");
+  assert.equal(scored.recommendedStatus, "ENRICHED");
+  assert.match(outputs.draftOutreachEmail, /strong multifamily\/property-operations signal/i);
+  assert.match(outputs.draftOutreachEmail, /where your team is seeing the most inbound volume/i);
+  assert.doesNotMatch(outputs.draftOutreachEmail, /^If you support/im);
+});
+
+test("buildFallbackRepOutputs uses conditional outreach for REVIEW leads", () => {
+  const assessment = makeAssessment({
+    normalized: {
+      ...makeAssessment().normalized,
+      name: "Michael Lee",
+      email: "michael.lee@cushwake.com",
+      emailLower: "michael.lee@cushwake.com",
+      emailDomain: "cushwake.com",
+      company: "Cushman & Wakefield"
+    },
+    company: {
+      ...makeAssessment().company,
+      legalName: "Cushman & Wakefield",
+      canonicalDomain: "cushwake.com",
+      website: "https://www.cushmanwakefield.com",
+      description: "Global commercial real estate services firm providing brokerage, facilities management, valuations, and capital markets advisory.",
+      industries: ["Commercial Real Estate", "Real Estate Services"],
+      businessType: "Commercial real estate services"
+    }
+  });
+  const scored = scoreLead(assessment);
+  const outputs = buildFallbackRepOutputs(assessment, scored);
+
+  assert.equal(scored.tier, "REVIEW");
+  assert.equal(scored.recommendedStatus, "NEEDS_REVIEW");
+  assert.match(outputs.draftOutreachEmail, /not sure whether your team handles residential leasing/i);
+  assert.match(outputs.draftOutreachEmail, /worth a quick check/i);
 });
