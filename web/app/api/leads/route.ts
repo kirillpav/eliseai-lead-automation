@@ -3,7 +3,6 @@ import { z } from "zod";
 import { appendLead, listLeads } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 const trimmed = z.string().trim();
 

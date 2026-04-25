@@ -100,6 +100,7 @@ function emptyLocationContext(): LocationContext {
     largeHousingUnitBase: false,
     premiumRentMarket: false,
     housingSignalTags: [],
+    housingContextTags: [],
     hasStrongHousingSignal: false
   };
 }
@@ -474,10 +475,13 @@ function enrichLocationContextViaCensus(address: AddressValidation, logger?: Lea
   const premiumRentMarket = medianGrossRent !== null && medianGrossRent >= 1500;
   const housingSignalTags = uniqueStrings([
     highRenterShare ? "high renter share" : "",
-    largeHousingUnitBase ? "large housing-unit base" : "",
+    largeHousingUnitBase ? "large housing-unit base" : ""
+  ]);
+  const housingContextTags = uniqueStrings([
+    ...housingSignalTags,
     premiumRentMarket ? "premium rent market" : ""
   ]);
-  const availableMetricCount = [renterOccupiedPct, housingUnits, medianGrossRent].filter((value) => value !== null).length;
+  const availableMetricCount = [renterOccupiedPct, housingUnits].filter((value) => value !== null).length;
   const housingSignalLevel: LocationContext["housingSignalLevel"] =
     availableMetricCount === 0 ? "unknown" : housingSignalTags.length >= 2 ? "high" : housingSignalTags.length === 1 ? "medium" : "low";
   const hasStrongHousingSignal = housingSignalLevel === "high" || housingSignalLevel === "medium";
@@ -501,6 +505,7 @@ function enrichLocationContextViaCensus(address: AddressValidation, logger?: Lea
     largeHousingUnitBase,
     premiumRentMarket,
     housingSignalTags,
+    housingContextTags,
     hasStrongHousingSignal
   };
   logger?.info("provider.census.context.hit", context);

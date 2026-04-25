@@ -82,6 +82,7 @@ export interface LocationContext {
   largeHousingUnitBase: boolean;
   premiumRentMarket: boolean;
   housingSignalTags: string[];
+  housingContextTags: string[];
   hasStrongHousingSignal: boolean;
 }
 

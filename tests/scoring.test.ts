@@ -67,7 +67,8 @@ function makeAssessment(overrides: Partial<LeadAssessment> = {}): LeadAssessment
       highRenterShare: true,
       largeHousingUnitBase: true,
       premiumRentMarket: true,
-      housingSignalTags: ["high renter share", "large housing-unit base", "premium rent market"],
+      housingSignalTags: ["high renter share", "large housing-unit base"],
+      housingContextTags: ["high renter share", "large housing-unit base", "premium rent market"],
       hasStrongHousingSignal: true
     },
     ...overrides
@@ -116,6 +117,7 @@ test("scoreLead penalizes unrelated adjacent businesses", () => {
         largeHousingUnitBase: false,
         premiumRentMarket: false,
         housingSignalTags: [],
+        housingContextTags: [],
         hasStrongHousingSignal: false
       }
     })
@@ -124,6 +126,29 @@ test("scoreLead penalizes unrelated adjacent businesses", () => {
   assert.equal(scored.recommendedStatus, "NEEDS_REVIEW");
   assert.ok(scored.score < 60);
   assert.ok(scored.negativeSignals.some((signal) => signal.includes("unrelated")));
+});
+
+test("scoreLead treats premium rent as context, not a housing score signal", () => {
+  const scored = scoreLead(
+    makeAssessment({
+      locationContext: {
+        ...makeAssessment().locationContext,
+        summary: "renter share is 30.0%, 1,200 housing units, median gross rent is $2,400",
+        renterOccupiedPct: 30,
+        housingUnits: 1200,
+        medianGrossRent: 2400,
+        housingSignalLevel: "low",
+        highRenterShare: false,
+        largeHousingUnitBase: false,
+        premiumRentMarket: true,
+        housingSignalTags: [],
+        housingContextTags: ["premium rent market"],
+        hasStrongHousingSignal: false
+      }
+    })
+  );
+
+  assert.ok(!scored.positiveSignals.some((signal) => signal.includes("Census housing context")));
 });
 
 test("scoreLead treats broad real estate services firms as conditional fit", () => {
