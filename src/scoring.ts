@@ -169,6 +169,16 @@ function buildScoreReason(
   );
 }
 
+function hasOutreachBlockingGap(assessment: LeadAssessment, fit: ReturnType<typeof detectFit>, score: number): boolean {
+  return (
+    !assessment.company.companyProfileFound ||
+    !assessment.normalized.emailValid ||
+    !assessment.normalized.hasRequiredFields ||
+    score < 55 ||
+    !fit.strongFit
+  );
+}
+
 export function scoreLead(assessment: LeadAssessment, logger?: LeadLogger): ScoredLead {
   const signals: ScoreSignal[] = [];
   const fit = detectFit(assessment);
@@ -265,16 +275,7 @@ export function scoreLead(assessment: LeadAssessment, logger?: LeadLogger): Scor
 
   const scoreReason = buildScoreReason(fit, positiveSignals, negativeSignals, assessment);
 
-  const recommendedStatus =
-    !company.companyProfileFound ||
-    !address.isValid ||
-    !normalized.emailValid ||
-    !normalized.hasRequiredFields ||
-    score < 60 ||
-    fit.conditionalFit ||
-    fit.fitLabel === "Unclear fit"
-      ? STATUS.NEEDS_REVIEW
-      : STATUS.ENRICHED;
+  const recommendedStatus = hasOutreachBlockingGap(assessment, fit, score) ? STATUS.NEEDS_REVIEW : STATUS.ENRICHED;
 
   const result = {
     score,

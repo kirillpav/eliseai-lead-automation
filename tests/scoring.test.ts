@@ -151,6 +151,42 @@ test("scoreLead treats premium rent as context, not a housing score signal", () 
   assert.ok(!scored.positiveSignals.some((signal) => signal.includes("Census housing context")));
 });
 
+test("scoreLead enriches strong outreach-ready leads even when address validation is unavailable", () => {
+  const scored = scoreLead(
+    makeAssessment({
+      address: {
+        ...makeAssessment().address,
+        formattedAddress: "1700 California Street, San Francisco, CA, United States",
+        latitude: null,
+        longitude: null,
+        postcode: "",
+        confidence: 0,
+        cityConfidence: 0,
+        streetConfidence: 0,
+        buildingConfidence: 0,
+        matchType: "",
+        isValid: false,
+        isComplete: false
+      },
+      locationContext: {
+        ...makeAssessment().locationContext,
+        available: false,
+        summary: "",
+        housingSignalLevel: "unknown",
+        highRenterShare: false,
+        largeHousingUnitBase: false,
+        premiumRentMarket: false,
+        housingSignalTags: [],
+        housingContextTags: [],
+        hasStrongHousingSignal: false
+      }
+    })
+  );
+
+  assert.equal(scored.tier, "WARM");
+  assert.equal(scored.recommendedStatus, "ENRICHED");
+});
+
 test("scoreLead treats broad real estate services firms as conditional fit", () => {
   const scored = scoreLead(
     makeAssessment({

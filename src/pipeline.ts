@@ -14,7 +14,7 @@ import {
   readLeadInput,
   writeRowOutput
 } from "./sheets.js";
-import type { LeadAssessment, LeadInput, LeadStatus, NormalizedLead, RepOutputs, ScoredLead, SheetRowOutput } from "./types.js";
+import type { LeadAssessment, LeadInput, NormalizedLead, RepOutputs, ScoredLead, SheetRowOutput } from "./types.js";
 import { nowIsoString } from "./utils.js";
 
 function buildSheetRowOutput(
@@ -32,13 +32,6 @@ function buildSheetRowOutput(
     assessment.address.matchType
   );
 
-  const status: LeadStatus =
-    score.recommendedStatus === STATUS.ENRICHED &&
-    assessment.company.companyProfileFound &&
-    assessment.address.isValid
-      ? STATUS.ENRICHED
-      : STATUS.NEEDS_REVIEW;
-
   return {
     "Company Domain": companyDomain,
     "Company Website": companyWebsite,
@@ -51,7 +44,7 @@ function buildSheetRowOutput(
     "Why Prioritize": actionability.whyPrioritize,
     "What's Missing": actionability.whatsMissing,
     "Draft Outreach Email": repOutputs.draftOutreachEmail,
-    Status: status,
+    Status: score.recommendedStatus,
     "Last Processed At": nowIsoString()
   };
 }
