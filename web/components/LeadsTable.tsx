@@ -11,6 +11,13 @@ const POLL_INTERVAL_MS = 10_000;
 
 type ViewMode = "all" | "review";
 
+type SortKey = "recent" | "score_desc" | "score_asc";
+
+const STATUS_OPTIONS = ["all", "NEW", "PENDING", "ENRICHED", "NEEDS_REVIEW", "ERROR"] as const;
+const TIER_OPTIONS = ["all", "HOT", "WARM", "REVIEW", "COLD"] as const;
+type StatusFilter = (typeof STATUS_OPTIONS)[number];
+type TierFilter = (typeof TIER_OPTIONS)[number];
+
 interface ApiResponse {
   leads: Lead[];
   fetchedAt: string;
@@ -67,6 +74,11 @@ export function LeadsTable() {
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [view, setView] = useState<ViewMode>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [tierFilter, setTierFilter] = useState<TierFilter>("all");
+  const [sortKey, setSortKey] = useState<SortKey>("recent");
+  const [search, setSearch] = useState("");
+  const [missingIdentityOnly, setMissingIdentityOnly] = useState(false);
   const inFlight = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -112,12 +124,68 @@ export function LeadsTable() {
   }, [leads]);
 
   const reviewQueue = useMemo(() => sortedLeads.filter(needsReview), [sortedLeads]);
-  const visibleLeads = view === "review" ? reviewQueue : sortedLeads;
+
+  const filtersActive =
+    statusFilter !== "all" ||
+    tierFilter !== "all" ||
+    sortKey !== "recent" ||
+    search.trim().length > 0 ||
+    missingIdentityOnly;
+
+  const visibleLeads = useMemo(() => {
+    const base = view === "review" ? reviewQueue : sortedLeads;
+    const query = search.trim().toLowerCase();
+
+    let filtered = base.filter((lead) => {
+      if (statusFilter !== "all" && lead.status !== statusFilter) {
+        return false;
+      }
+      if (tierFilter !== "all" && lead.leadTier.toUpperCase() !== tierFilter) {
+        return false;
+      }
+      if (missingIdentityOnly) {
+        if (!lead.company) return false;
+        if (lead.companyDomain || lead.companyWebsite) return false;
+      }
+      if (query) {
+        const haystack = [lead.company, lead.companyDomain, lead.city, lead.state, lead.name, lead.email]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(query)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    if (sortKey === "score_desc" || sortKey === "score_asc") {
+      const direction = sortKey === "score_desc" ? -1 : 1;
+      filtered = [...filtered].sort((a, b) => {
+        const sa = a.leadScore;
+        const sb = b.leadScore;
+        // null scores always sort to the bottom regardless of direction.
+        if (sa === null && sb === null) return 0;
+        if (sa === null) return 1;
+        if (sb === null) return -1;
+        return (sa - sb) * direction;
+      });
+    }
+
+    return filtered;
+  }, [view, sortedLeads, reviewQueue, statusFilter, tierFilter, missingIdentityOnly, search, sortKey]);
 
   const selectedLead = useMemo(
     () => sortedLeads.find((lead) => lead.rowNumber === selectedRow) ?? null,
     [sortedLeads, selectedRow]
   );
+
+  function clearFilters() {
+    setStatusFilter("all");
+    setTierFilter("all");
+    setSortKey("recent");
+    setSearch("");
+    setMissingIdentityOnly(false);
+  }
 
   return (
     <div className="space-y-4">
@@ -128,7 +196,10 @@ export function LeadsTable() {
           ) : fetchedAt ? (
             <>
               <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 align-middle" /> Updated{" "}
-              {formatRelative(fetchedAt, now)} · {leads.length} {leads.length === 1 ? "lead" : "leads"}
+              {formatRelative(fetchedAt, now)} ·{" "}
+              {filtersActive
+                ? `${visibleLeads.length} of ${leads.length} ${leads.length === 1 ? "lead" : "leads"}`
+                : `${leads.length} ${leads.length === 1 ? "lead" : "leads"}`}
             </>
           ) : (
             "No data yet"
@@ -177,6 +248,82 @@ export function LeadsTable() {
         </button>
       </div>
 
+      <div className="flex flex-wrap items-end gap-3 rounded-md border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-900">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Search</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Company, city, state, name…"
+            className="w-56 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Status</span>
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+          >
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option === "all" ? "All statuses" : option}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Tier</span>
+          <select
+            value={tierFilter}
+            onChange={(event) => setTierFilter(event.target.value as TierFilter)}
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+          >
+            {TIER_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option === "all" ? "All tiers" : option}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Sort by</span>
+          <select
+            value={sortKey}
+            onChange={(event) => setSortKey(event.target.value as SortKey)}
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+          >
+            <option value="recent">Most recent</option>
+            <option value="score_desc">Score · high → low</option>
+            <option value="score_asc">Score · low → high</option>
+          </select>
+        </label>
+
+        <label className="flex items-center gap-2 pb-1.5 text-slate-700 dark:text-slate-200">
+          <input
+            type="checkbox"
+            checked={missingIdentityOnly}
+            onChange={(event) => setMissingIdentityOnly(event.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          <span>Only missing company domain/website</span>
+        </label>
+
+        {filtersActive && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="ml-auto pb-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
       {error && (
         <div className="rounded-md border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
           {error}
@@ -199,9 +346,11 @@ export function LeadsTable() {
             {visibleLeads.length === 0 && !loading && (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500 dark:text-slate-400">
-                  {view === "review"
-                    ? "Nothing in the review queue. Everything is either auto-enriched or already actioned."
-                    : "No leads yet. Add one to kick off enrichment."}
+                  {filtersActive
+                    ? "No leads match the current filters."
+                    : view === "review"
+                      ? "Nothing in the review queue. Everything is either auto-enriched or already actioned."
+                      : "No leads yet. Add one to kick off enrichment."}
                 </td>
               </tr>
             )}
